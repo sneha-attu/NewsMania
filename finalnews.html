@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewsMania - Your News Dashboard</title>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background-color: #f0f0f0;
+        }
+        .neu-brutal {
+            border: 4px solid black;
+            box-shadow: 6px 6px 0 black;
+            transition: all 0.2s ease;
+        }
+        .neu-brutal:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 8px 8px 0 black;
+        }
+        .loading-spin {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .pagination-button {
+            transition: all 0.2s ease;
+        }
+        .pagination-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .modal {
+            transition: opacity 0.3s ease;
+        }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            transform: translateY(100px);
+            transition: transform 0.3s ease;
+        }
+        .toast.show {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div x-data="newsApp" class="min-h-screen p-4 md:p-8">
+        <header class="mb-8 flex justify-between items-center flex-wrap gap-4">
+            <h1 class="text-4xl md:text-6xl font-bold mb-4 neu-brutal bg-yellow-300 inline-block p-4">
+                NewsMania
+            </h1>
+            
+            <!-- User Authentication Buttons -->
+             <div class="flex gap-3">
+                <template x-if="!isLoggedIn">
+                    <button 
+                        @click="showRegisterModal = true" 
+                        class="neu-brutal bg-purple-300 p-2 px-4 flex items-center gap-1"
+                    >
+                        <i class="bi bi-person-plus"></i> Register
+                    </button>
+                </template>
+                <template x-if="!isLoggedIn">
+                    <button 
+                        @click="showLoginModal = true" 
+                        class="neu-brutal bg-blue-300 p-2 px-4 flex items-center gap-1"
+                    >
+                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    </button>
+                </template>
+                <template x-if="isLoggedIn">
+                    <div class="flex gap-3">
+                        <span class="neu-brutal bg-green-200 p-2 px-4 flex items-center gap-1">
+                            <i class="bi bi-person-check"></i> <span x-text="currentUser"></span>
+                        </span>
+                        <button 
+                            @click="logout" 
+                            class="neu-brutal bg-red-200 p-2 px-4 flex items-center gap-1"
+                        >
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    </div>
+                </template>
+                <span 
+    class="neu-brutal bg-green-200 p-2 px-4 flex items-center gap-1 cursor-pointer"
+    @click="toggleProfileSidebar"
+>
+    <i class="bi bi-person-check"></i> <span x-text="currentUser"></span>
+</span>
+            </div>
+        </header>
+        <!-- Profile Sidebar -->
+<div 
+    x-show="showProfileSidebar" 
+    
+    @click.outside="showProfileSidebar = false"
+    class="fixed inset-0 bg-black bg-opacity-30 z-50 flex justify-end"
+>
+    <div class="w-80 bg-white h-full p-6 neu-brutal relative">
+        <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+            <i class="bi bi-person-circle text-blue-500"></i> Profile
+        </h2>
+
+        <!-- ✅ Keep this ONE time only -->
+
+
+</h2>
+
+<!-- 🧠 Suggested Category Section -->
+<div class="mb-4">
+    <h3 class="font-bold">🧠 Suggested For You</h3>
+    <template x-if="Object.keys(categoryClicks).length > 0">
+        <p class="text-sm mt-1">
+            You often read about: 
+            <span class="font-semibold" x-text="Object.entries(categoryClicks).sort((a,b) => b[1]-a[1])[0][0]"></span>
+        </p>
+    </template>
+</div>
+
+
+<!-- ✅ Avatar Upload UI -->
+<div class="mb-4">
+    <img 
+        :src="avatarDataUrl || 'https://api.dicebear.com/7.x/thumbs/svg?seed=' + currentUser" 
+        class="w-16 h-16 rounded-full border-2 border-black mb-2"
+        alt="avatar"
+    >
+    <input 
+        type="file" 
+        accept="image/*" 
+        @change="handleAvatarUpload" 
+        class="block w-full text-sm"
+    >
+</div>
+
+
+        <div class="mb-4">
+            <p><strong>Username:</strong> <span x-text="currentUser"></span></p>
+            <p><strong>Email:</strong> <span x-text="userEmail || 'N/A'"></span></p>
+        </div>
+
+        <div class="mb-4">
+            <h3 class="text-lg font-semibold mb-2">🎯 Stats</h3>
+            <p>✅ Verified: <span x-text="verifiedCount"></span></p>
+            <p>📤 Shared: <span x-text="sharedCount"></span></p>
+            <p>⭐ Points: <span x-text="points"></span></p>
+        </div>
+
+        <div class="mb-4">
+            <h3 class="text-lg font-semibold mb-2">🎁 Rewards</h3>
+            <template x-if="points >= 50">
+                <button @click="claimReward" class="neu-brutal bg-green-300 px-4 py-2 w-full mb-2">
+                    Claim Reward
+                </button>
+            </template>
+            <template x-if="points < 50">
+                <p class="text-gray-500">Earn 50+ points to claim a reward.</p>
+            </template>
+        </div>
+
+        <button 
+            @click="logout" 
+            class="neu-brutal bg-red-300 px-4 py-2 w-full mt-6"
+        >
+            <i class="bi bi-box-arrow-right"></i> Logout
+        </button>
+    </div>
+</div>
+
+        
+
+        <!-- Dashboard Stats (Only visible when logged in) -->
+        <template x-if="isLoggedIn">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div class="neu-brutal bg-white p-6">
+                    <h2 class="text-xl font-bold mb-2">📌 Verified Articles</h2>
+                    <p class="text-2xl" x-text="verifiedCount"></p>
+                </div>
+
+                <div class="neu-brutal bg-white p-6">
+                    <h2 class="text-xl font-bold mb-2">📤 Shared Articles</h2>
+                    <p class="text-2xl" x-text="sharedCount"></p>
+                </div>
+
+                <div class="neu-brutal bg-white p-6">
+                    <h2 class="text-xl font-bold mb-2">⭐ Points Earned</h2>
+                    <p class="text-2xl">🎯 <span x-text="points"></span> Points</p>
+                </div>
+
+                <div class="neu-brutal bg-white p-6">
+                    <h2 class="text-xl font-bold mb-2">🎁 Claim Rewards</h2>
+                    <template x-if="points >= 50">
+                        <button class="neu-brutal bg-green-300 px-4 py-2" @click="claimReward">Claim Reward</button>
+                    </template>
+                    <template x-if="points < 50">
+                        <p class="text-gray-500">Earn at least 50 points to claim a reward.</p>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <!-- Search and Filter Section -->
+        <div class="mb-8 neu-brutal bg-white p-4">
+            <div class="flex flex-wrap gap-4">
+                <input 
+                    type="text" 
+                    x-model="searchQuery" 
+                    placeholder="Search news..."
+                    class="p-2 neu-brutal bg-blue-100 flex-grow"
+                    @keyup.enter="fetchNews"
+                >
+                <select 
+                    x-model="selectedCategory" 
+                    class="p-2 neu-brutal bg-green-100"
+                    @change="fetchNews"
+                >
+                    <option value="">All Categories</option>
+                    <option value="general">General</option>
+                    <option value="business">Business</option>
+                    <option value="technology">Technology</option>
+                    <option value="sports">Sports</option>
+                    <option value="entertainment">Entertainment</option>
+                    <option value="health">Health</option>
+                    <option value="science">Science</option>
+                </select>
+                <select 
+                    x-model="selectedCountry" 
+                    class="p-2 neu-brutal bg-orange-100"
+                    @change="fetchNews"
+                >
+                    <option value="">All Countries</option>
+                    <option value="us">United States</option>
+                    <option value="gb">United Kingdom</option>
+                    <option value="ca">Canada</option>
+                    <option value="au">Australia</option>
+                    <option value="de">Germany</option>
+                    <option value="fr">France</option>
+                    <option value="in">India</option>
+                    <option value="jp">Japan</option>
+                </select>
+                <button 
+                    @click="fetchNews" 
+                    class="neu-brutal bg-red-300 p-2 px-4 flex items-center gap-1"
+                >
+                    <i class="bi bi-search"></i> Search
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="loading" class="flex justify-center items-center my-8">
+            <div class="neu-brutal bg-white p-6 flex flex-col items-center">
+                <i class="bi bi-arrow-repeat text-4xl loading-spin"></i>
+                <p class="mt-3 font-bold">Loading news...</p>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div x-show="error" class="neu-brutal bg-red-100 p-4 mb-8">
+            <p x-text="error" class="text-red-600 font-bold"></p>
+            <button @click="fetchNews" class="mt-2 neu-brutal bg-white px-3 py-1">Try Again</button>
+        </div>
+
+        <!-- News Grid -->
+        <div x-show="!loading && !error && news.length > 0" class="mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <template x-for="(article, index) in news" :key="index">
+                    <article class="neu-brutal bg-white p-4 flex flex-col h-full">
+                        <div class="mb-4 flex flex-wrap gap-2">
+                            <span class="bg-purple-200 neu-brutal px-2 py-1 text-sm" x-text="article.category || 'General'"></span>
+                            <span class="bg-blue-200 neu-brutal px-2 py-1 text-sm" x-text="article.source || 'Unknown Source'"></span>
+                            
+                            <!-- Verification Status -->
+                            <template x-if="article.verified">
+                                <span class="bg-green-200 neu-brutal px-2 py-1 text-sm flex items-center gap-1">
+                                    <i class="bi bi-check-circle"></i> Verified
+                                </span>
+                            </template>
+                            <template x-if="!article.verified">
+                                <span class="bg-yellow-200 neu-brutal px-2 py-1 text-sm flex items-center gap-1">
+                                    <i class="bi bi-question-circle"></i> Unverified
+                                </span>
+                            </template>
+                        </div>
+                        
+                        <h2 class="text-xl font-bold mb-2" x-text="article.title"></h2>
+                        <p class="text-gray-600 mb-4 flex-grow" x-text="article.description || 'No description available'"></p>
+                        
+                        <div class="flex justify-between items-center mt-auto">
+                            <span class="text-sm text-gray-500" x-text="formatDate(article.published_at)"></span>
+                            <div class="flex gap-2">
+                                <!-- News Verification Button -->
+                                <button 
+                                    @click="verifyArticle(index)"
+                                    class="neu-brutal px-3 py-1 flex items-center gap-1"
+                                    :class="article.verified ? 'bg-green-400 text-white' : 'bg-blue-500 text-white'"
+                                >
+                                    <template x-if="article.verified">
+                                        <span>
+                                            <i class="bi bi-check-circle-fill"></i> Verified
+                                        </span>
+                                    </template>
+                                    <template x-if="!article.verified">
+                                        <span>
+                                            <i class="bi bi-shield"></i> Verify
+                                        </span>
+                                    </template>
+                                </button>
+                                
+                                <!-- Share Button -->
+                                <button 
+                                    @click="shareArticle(article)" 
+                                    class="neu-brutal bg-blue-200 px-3 py-1 flex items-center gap-1"
+                                >
+                                    <i class="bi bi-share"></i>
+                                    <span>Share</span>
+                                </button>
+                                
+                                <!-- Read More Link -->
+                                <a :href="article.url" target="_blank" class="neu-brutal bg-pink-200 px-3 py-1 flex items-center gap-1">
+                                    <span>Read</span>
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </article>
+                </template>
+            </div>
+        </div>
+
+        <!-- No Results Message -->
+        <div x-show="!loading && !error && news.length === 0" class="neu-brutal bg-yellow-100 p-8 text-center mb-8">
+            <i class="bi bi-exclamation-triangle text-4xl"></i>
+            <p class="font-bold text-xl mt-2">No news articles found</p>
+            <p class="mt-1">Try different search terms or filters</p>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div x-show="!loading && !error && news.length > 0" class="flex justify-center items-center gap-4 mt-8">
+            <button 
+                @click="previousPage" 
+                :disabled="currentPage <= 1" 
+                class="neu-brutal bg-green-200 p-2 px-4 pagination-button flex items-center gap-1"
+            >
+                <i class="bi bi-arrow-left"></i> Previous
+            </button>
+            
+            <span class="neu-brutal bg-white p-2 px-4">Page <span x-text="currentPage"></span></span>
+            
+            <button 
+                @click="nextPage" 
+                class="neu-brutal bg-green-200 p-2 px-4 pagination-button flex items-center gap-1"
+            >
+                Next <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+        <!-- Register Modal -->
+        <div 
+            x-show="showRegisterModal" 
+            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal"
+            x-transition:enter="transition ease duration-300"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease duration-300"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+        >
+            <div class="neu-brutal bg-white p-6 max-w-md w-full" @click.outside="showRegisterModal = false">
+                <h2 class="text-2xl font-bold mb-4">Register</h2>
+                
+                <form @submit.prevent="register">
+                    <div class="mb-4">
+                        <label class="block mb-1 font-bold">Username</label>
+                        <input 
+                            type="text" 
+                            x-model="registerForm.username" 
+                            class="p-2 neu-brutal bg-blue-50 w-full" 
+                            required
+                        >
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block mb-1 font-bold">Email</label>
+                        <input 
+                            type="email" 
+                            x-model="registerForm.email" 
+                            class="p-2 neu-brutal bg-blue-50 w-full" 
+                            required
+                        >
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block mb-1 font-bold">Password</label>
+                        <input 
+                            type="password" 
+                            x-model="registerForm.password" 
+                            class="p-2 neu-brutal bg-blue-50 w-full" 
+                            required
+                            minlength="6"
+                        >
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <button type="submit" class="neu-brutal bg-purple-300 p-2 px-4">
+                            Register
+                        </button>
+                        <button type="button" @click="showRegisterModal = false" class="neu-brutal bg-gray-200 p-2 px-4">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Login Modal -->
+        <div 
+            x-show="showLoginModal" 
+            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal"
+            x-transition:enter="transition ease duration-300"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease duration-300"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+        >
+            <div class="neu-brutal bg-white p-6 max-w-md w-full" @click.outside="showLoginModal = false">
+                <h2 class="text-2xl font-bold mb-4">Login</h2>
+                
+                <form @submit.prevent="login">
+                    <div class="mb-4">
+                        <label class="block mb-1 font-bold">Username</label>
+                        <input 
+                            type="text" 
+                            x-model="loginForm.username" 
+                            class="p-2 neu-brutal bg-blue-50 w-full" 
+                            required
+                        >
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block mb-1 font-bold">Password</label>
+                        <input 
+                            type="password" 
+                            x-model="loginForm.password" 
+                            class="p-2 neu-brutal bg-blue-50 w-full" 
+                            required
+                        >
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <button type="submit" class="neu-brutal bg-blue-300 p-2 px-4">
+                            Login
+                        </button>
+                        <button type="button" @click="showLoginModal = false" class="neu-brutal bg-gray-200 p-2 px-4">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Share Modal -->
+        <div 
+            x-show="showShareModal" 
+            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal"
+            x-transition:enter="transition ease duration-300"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease duration-300"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+        >
+            <div class="neu-brutal bg-white p-6 max-w-md w-full" @click.outside="showShareModal = false">
+                <h2 class="text-2xl font-bold mb-4">Share Article</h2>
+                
+                <div class="mb-6">
+                    <p class="font-bold" x-text="shareArticleData.title"></p>
+                    <p class="text-sm text-gray-600 mt-2" x-text="shareArticleData.url"></p>
+                </div>
+                
+                <div class="flex flex-wrap gap-3">
+                    <button 
+                        @click="shareVia('twitter')" 
+                        class="neu-brutal bg-blue-400 p-2 px-4 flex items-center gap-1"
+                    >
+                        <i class="bi bi-twitter"></i> Twitter
+                    </button>
+                    
+                    <button 
+                        @click="shareVia('facebook')" 
+                        class="neu-brutal bg-blue-600 p-2 px-4 flex items-center gap-1"
+                    >
+                        <i class="bi bi-facebook"></i> Facebook
+                    </button>
+                    
+                    <button 
+                        @click="shareVia('linkedin')" 
+                        class="neu-brutal bg-blue-700 p-2 px-4 flex items-center gap-1"
+                    >
+                        <i class="bi bi-linkedin"></i> LinkedIn
+                    </button>
+                    
+                    <button 
+                        @click="shareVia('copy')" 
+                        class="neu-brutal bg-gray-200 p-2 px-4 flex items-center gap-1"
+                    >
+                        <i class="bi bi-clipboard"></i> Copy Link
+                    </button>
+                </div>
+                
+                <div class="mt-6 flex justify-end">
+                    <button @click="showShareModal = false" class="neu-brutal bg-gray-200 p-2 px-4">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div 
+            x-show="isToastVisible" 
+            x-transition:enter="transition ease duration-300"
+            x-transition:enter-start="transform translate-y-full"
+            x-transition:enter-end="transform translate-y-0"
+            x-transition:leave="transition ease duration-300"
+            x-transition:leave-start="transform translate-y-0"
+            x-transition:leave-end="transform translate-y-full"
+            class="neu-brutal bg-white p-4 max-w-md toast"
+            :class="{'show': isToastVisible}"
+        >
+            <div class="flex items-center gap-2">
+                <i class="bi" :class="toastIcon"></i>
+                <p x-text="toastMessage"></p>
+                <button @click="isToastVisible = false" class="ml-auto">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-12 text-center p-4">
+            <p>Powered by MediaStack API | NeuBrutalism Design</p>
+            <p class="text-sm mt-2">© <span x-text="new Date().getFullYear()"></span>NEWS MANIA</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('newsApp', () => ({
+                news: [],
+                loading: false,
+                activityHistory: [],
+error: null,
+searchQuery: '',
+selectedCategory: '',
+selectedCountry: '',
+currentPage: 1,
+limit: 9,
+totalResults: 0,
+categoryClicks: {},
+                avatarDataUrl: '',
+                news: [],
+ // 🔍 Add here!
+
+
+                
+                // Authentication states
+                // 🔐 Auth
+                isLoggedIn: false,
+                currentUser: '',
+                userEmail: '',
+                showRegisterModal: false,
+                showLoginModal: false,
+                showProfileSidebar: false,
+
+                
+
+                
+                // Dashboard stats
+                verifiedCount: 0,
+                sharedCount: 0,
+                points: 0,
+                
+
+                
+                // Registration form
+                registerForm: {
+                    username: '',
+                    email: '',
+                    password: ''
+                    
+                    
+                },
+                
+                // Login form
+                loginForm: {
+                    username: '',
+                    password: ''
+                },
+                
+                // Share modal
+                showShareModal: false,
+                shareArticleData: {
+                    title: '',
+                    url: ''
+                    
+                },
+                
+                // Toast notification
+                isToastVisible: false,
+                toastMessage: '',
+                toastIcon: 'bi-info-circle',
+                toastTimeout: null,
+
+                showProfileSidebar: false,
+                userEmail: '',
+
+                showToast(message, icon = 'bi-info-circle', bgClass = 'bg-white') {
+                    // Clear any existing timeout
+                    if (this.toastTimeout) {
+                        clearTimeout(this.toastTimeout);
+                    }
+                    this.toastMessage = message;
+                    this.toastIcon = icon;
+                    this.isToastVisible = true;
+                    // Auto-hide after 3 seconds
+                    this.toastTimeout = setTimeout(() => {
+                        this.isToastVisible = false;
+                    }, 3000);
+                },
+
+                async fetchNews() {
+                    this.loading = true;
+                    this.error = null;
+                    try {
+                        let url = 'http://api.mediastack.com/v1/news?access_key=e953bd4c5d5ec45875b684a95ee1f15f';
+                        url += `&limit=${this.limit}&offset=${(this.currentPage - 1) * this.limit}`;
+                        if (this.searchQuery) {
+                            url += `&keywords=${encodeURIComponent(this.searchQuery)}`;
+                        }
+                        if (this.selectedCategory) {
+                            url += `&categories=${this.selectedCategory}`;
+                        }
+                        if (this.selectedCountry) {
+                            url += `&countries=${this.selectedCountry}`;
+                        }
+                        url += `&sort=published_desc`;
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch news: ${response.status} ${response.statusText}`);
+                        }
+                        const data = await response.json();
+                        if (data.error) {
+                            throw new Error(data.error.message || 'API Error');
+                        }
+                        this.news = (data.data || []).map(article => {
+                            return {
+                                ...article,
+                                verified: false
+                            };
+                        });
+                        this.totalResults = data.pagination?.total || this.news.length;
+                    } catch (err) {
+                        console.error('News API Error:', err);
+                        this.error = err.message || 'Failed to load news. Please try again later.';
+                        this.news = [];
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                nextPage() {
+                    this.currentPage++;
+                    this.fetchNews();
+                    this.scrollToTop();
+                },
+
+                previousPage() {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                        this.fetchNews();
+                        this.scrollToTop();
+                    }
+                },
+
+                scrollToTop() {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+
+                formatDate(dateString) {
+                    if (!dateString) return 'Unknown date';
+                    try {
+                        const date = new Date(dateString);
+                        return date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        return dateString;
+                    }
+                },
+
+                register() {
+                    const users = JSON.parse(localStorage.getItem('newsmania_users') || '[]');
+                    if (users.some(user => user.username === this.registerForm.username)) {
+                        this.showToast('Username already exists', 'bi-exclamation-triangle', 'bg-red-100');
+                        return;
+                    }
+                    users.push({
+                        username: this.registerForm.username,
+                        email: this.registerForm.email,
+                        password: this.registerForm.password
+                    });
+                    localStorage.setItem('newsmania_users', JSON.stringify(users));
+                    this.showRegisterModal = false;
+                    this.showToast('Registration successful! You can now log in.', 'bi-check-circle', 'bg-green-100');
+                    this.registerForm = {
+                        username: '',
+                        email: '',
+                        password: ''
+                    };
+                },
+
+                login() {
+    const users = JSON.parse(localStorage.getItem('newsmania_users') || '[]');
+    const user = users.find(u =>
+        u.username === this.loginForm.username &&
+        u.password === this.loginForm.password
+        
+    );
+
+                    if (user) {
+                        this.isLoggedIn = true;
+                        this.currentUser = user.username;
+                        sessionStorage.setItem('newsmania_currentUser', user.username);
+                        this.loadUserStats();
+                        this.showLoginModal = false;
+                        this.userEmail = user.email || '';
+
+                        this.showToast('Login successful!', 'bi-check-circle', 'bg-green-100');
+                        this.loginForm = {
+                            username: '',
+                            password: ''
+                        };
+                    } else {
+                        this.showToast('Invalid username or password', 'bi-exclamation-triangle', 'bg-red-100');
+                    }
+                },
+
+                toggleProfileSidebar() {
+    this.showProfileSidebar = !this.showProfileSidebar;
+},
+
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.currentUser = '';
+                    sessionStorage.removeItem('newsmania_currentUser');
+                    this.showToast('You have been logged out', 'bi-info-circle', 'bg-blue-100');
+                },
+
+                handleAvatarUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        this.avatarDataUrl = reader.result;
+        localStorage.setItem(`newsmania_avatar_${this.currentUser}`, reader.result);
+    };
+    reader.readAsDataURL(file);
+},
+
+
+                loadUserStats() {
+                    const user = this.currentUser;
+                    const activity = JSON.parse(localStorage.getItem(`newsmania_stats_${user}`) || '{"verified":0,"shared":0}');
+                    this.verifiedCount = activity.verified || 0;
+                    this.sharedCount = activity.shared || 0;
+                    this.points = (this.verifiedCount * 10) + (this.sharedCount * 5);
+                },
+
+                claimReward() {
+                    if (this.points >= 50) {
+                        alert('🎉 Reward Claimed! Your points have been reset.');
+                        const user = this.currentUser;
+                        localStorage.setItem(`newsmania_stats_${user}`, JSON.stringify({ verified: 0, shared: 0 }));
+                        this.verifiedCount = 0;
+                        this.sharedCount = 0;
+                        this.points = 0;
+                        this.showToast('Reward claimed successfully!', 'bi-gift', 'bg-green-100');
+                    }
+                },
+
+                verifyArticle(index) {
+                    if (!this.isLoggedIn) {
+                        this.showLoginModal = true;
+                        return;
+                    }
+                    this.news[index].verified = !this.news[index].verified;
+                    const user = this.currentUser;
+                    const activity = JSON.parse(localStorage.getItem(`newsmania_stats_${user}`) || '{"verified":0,"shared":0}');
+                    if (this.news[index].verified) {
+                        activity.verified = (activity.verified || 0) + 1;
+                        this.showToast('Article verified! +10 points', 'bi-check-circle', 'bg-green-100');
+                    } else {
+                        activity.verified = Math.max(0, (activity.verified || 0) - 1);
+                        this.showToast('Verification removed', 'bi-info-circle', 'bg-yellow-100');
+                    }
+                    localStorage.setItem(`newsmania_stats_${user}`, JSON.stringify(activity));
+                    this.loadUserStats();
+                },
+
+                
+
+                shareArticle(article) {
+                    if (!this.isLoggedIn) {
+                        this.showLoginModal = true;
+                        return;
+                    }
+                    this.shareArticleData = {
+                        title: article.title,
+                        url: article.url
+                    };
+                    this.showShareModal = true;
+                },
+
+                
+
+                shareVia(platform) {
+                    const title = encodeURIComponent(this.shareArticleData.title);
+                    const url = encodeURIComponent(this.shareArticleData.url);
+                    switch (platform) {
+                        case 'twitter':
+                            window.open(`https://twitter.com/intent/tweet?text=${title}&url=${url}`, '_blank');
+                            break;
+                        case 'facebook':
+                            window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
+                            break;
+                        case 'linkedin':
+                            window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
+                            break;
+                        case 'copy':
+                            navigator.clipboard.writeText(this.shareArticleData.url)
+                                .then(() => {
+                                    this.showToast('Link copied to clipboard!', 'bi-clipboard-check', 'bg-blue-100');
+                                })
+                                .catch(err => {
+                                    this.showToast('Failed to copy link', 'bi-exclamation-triangle', 'bg-red-100');
+                                });
+                            break;
+                    }
+                    const user = this.currentUser;
+                    const activity = JSON.parse(localStorage.getItem(`newsmania_stats_${user}`) || '{"verified":0,"shared":0}');
+                    activity.shared = (activity.shared || 0) + 1;
+                    localStorage.setItem(`newsmania_stats_${user}`, JSON.stringify(activity));
+                    this.loadUserStats();
+                    this.showShareModal = false;
+                },
+
+                init() {
+    const savedUser = sessionStorage.getItem('newsmania_currentUser');
+    if (savedUser) {
+        this.isLoggedIn = true;
+        this.currentUser = savedUser;
+        const users = JSON.parse(localStorage.getItem('newsmania_users') || '[]');
+        const userData = users.find(u => u.username === savedUser);
+        this.userEmail = userData?.email || '';
+        this.loadUserStats();
+    }
+    this.fetchNews();
+    window.addEventListener('popstate', () => {
+        const params = new URLSearchParams(window.location.search);
+        this.currentPage = parseInt(params.get('page')) || 1;
+        this.searchQuery = params.get('q') || '';
+        this.selectedCategory = params.get('category') || '';
+        this.selectedCountry = params.get('country') || '';
+        this.fetchNews();
+
+        this.avatarDataUrl = localStorage.getItem(`newsmania_avatar_${this.currentUser}`) || '';
+
+    });
+}
+
+            }));
+        });
+    </script>
+</body>
+</html> 
